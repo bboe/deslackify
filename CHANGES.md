@@ -5,6 +5,7 @@
 ### Added
 
 - `--after` parameter to help narrow down search results.
+- `--dry-run` parameter to test prior to deletion.
 
 ## [0.2.0] - 2019/02/23
 

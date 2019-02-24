@@ -24,10 +24,6 @@ def handle_encoding(message):
 
 
 def delete_message(slack, message, update_first=False):
-    date_string = datetime.utcfromtimestamp(
-        int(message['ts'].split('.', 1)[0])).strftime('%Y-%m-%d %H:%M:%S')
-    logging.info('{} {}'.format(date_string, handle_encoding(message['text'])))
-
     if update_first:
         handle_rate_limit(
             slack.chat.update, as_user=True, channel=message['channel']['id'],
@@ -79,6 +75,9 @@ def main():
     parser.add_argument(
         '--before', default=default_before,
         help='Date to delete messages prior to (default: %(default)s)')
+    parser.add_argument(
+        '--dry-run', action='store_true',
+        help='Do not actually delete nor update (default: False)')
     parser.add_argument('--token', help=(
         'The token used to connect to slack. This value can also be passed via'
         'the SLACK_TOKEN environment variable.'))
@@ -112,8 +111,13 @@ def run(slack, args):
     try:
         for message in search_messages(slack, args.user, after=args.after,
                                        before=args.before):
+            date_string = datetime.utcfromtimestamp(int(
+                message['ts'].split('.', 1)[0])).strftime('%Y-%m-%d %H:%M:%S')
+            logging.info('{} {}'.format(date_string,
+                                        handle_encoding(message['text'])))
             try:
-                delete_message(slack, message, args.update)
+                if not args.dry_run:
+                    delete_message(slack, message, update=args.update)
             except slacker.Error as exception:
                 if exception.args[0] == 'message_not_found':
                     print('---not found')
@@ -124,7 +128,8 @@ def run(slack, args):
     except KeyboardInterrupt:
         pass
 
-    logging.info('Messages deleted: {}'.format(deleted))
+    delete_message = 'to delete' if args.dry_run else 'deleted'
+    logging.info('Messages {}: {}'.format(delete_message, deleted))
     if not_found:
         logging.info('Messages not found: {}'.format(not_found))
     return 0
