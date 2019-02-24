@@ -3,18 +3,23 @@ import logging
 import os
 import sys
 import time
+from collections import Counter
 from datetime import date, datetime
 
 import slacker
 from requests import HTTPError, ReadTimeout, Session
 
 
-__version__ = '0.4.0'
+__version__ = '0.5.0'
 
 
 logging.basicConfig(
-    format='%(asctime)-15s %(message)s',
+    format='%(asctime)-15s %(levelname)-8s %(message)s',
     level=logging.INFO)
+
+
+class RetryException(Exception):
+    pass
 
 
 def delete_message(slack, message, update_first=False):
@@ -54,6 +59,7 @@ def handle_rate_limit(method, *args, **kwargs):
             logging.info('Read timeout. Sleeping for 16 seconds')
             time.sleep(16)
         count -= 1
+    raise RetryException
 
 
 def main():
@@ -106,7 +112,7 @@ def main():
 
 def run(slack, args):
     deleted = 0
-    not_found = 0
+    errors = Counter()
 
     try:
         for message in search_messages(slack, args.user, after=args.after,
@@ -118,10 +124,13 @@ def run(slack, args):
             try:
                 if not args.dry_run:
                     delete_message(slack, message, args.update)
+            except RetryException:
+                errors['max retries exceeded'] += 1
+                logging.warning('RetryException')
             except slacker.Error as exception:
-                if exception.args[0] == 'message_not_found':
-                    print('---not found')
-                    not_found += 1
+                if len(exception.args) == 1:
+                    errors[exception.args[0]] += 1
+                    logging.warning(exception.args[0])
                     continue
                 raise
             deleted += 1
@@ -130,8 +139,8 @@ def run(slack, args):
 
     phrase = 'to delete' if args.dry_run else 'deleted'
     logging.info('Messages {}: {}'.format(phrase, deleted))
-    if not_found:
-        logging.info('Messages not found: {}'.format(not_found))
+    for error, count in sorted(errors.items()):
+        logging.info('{} errors: {}'.format(error, count))
     return 0
 
 

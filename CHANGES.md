@@ -1,6 +1,17 @@
 # Changelog
 
-## [0.4.0] - 2019/02/23
+## [0.5.0] = 2019/02/24
+
+### Added
+
+- Dynamically support most `slacker.Error` messages now.
+- Log `RetryException` when requests don't complete after a few retries.
+
+### Changed
+
+- Logging output now includes the log level
+
+## [0.4.0] - 2019/02/24
 
 ### Added
 
