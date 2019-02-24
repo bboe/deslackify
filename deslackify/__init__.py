@@ -9,7 +9,7 @@ import slacker
 from requests import HTTPError, ReadTimeout, Session
 
 
-__version__ = '0.1.0'
+__version__ = '0.1.1'
 
 
 logging.basicConfig(
