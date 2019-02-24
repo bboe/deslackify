@@ -73,18 +73,26 @@ def main():
         description='Delete slack messages by specified user',
         usage='%(prog)s [options] user')
     parser.add_argument('user', help='Delete messages from this user')
-    parser.add_argument('--token', help=(
-        'The token used to connect to slack. This value can also be passed via'
-        'the SLACK_TOKEN environment variable.'))
+    parser.add_argument(
+        '--after', help=('Date (YYYY-MM-DD) to delete messages after '
+                         '(default: no restriction)'))
     parser.add_argument(
         '--before', default=default_before,
         help='Date to delete messages prior to (default: %(default)s)')
+    parser.add_argument('--token', help=(
+        'The token used to connect to slack. This value can also be passed via'
+        'the SLACK_TOKEN environment variable.'))
     parser.add_argument(
         '--update', action='store_true',
         help='Update message to `-` prior to deleting (default: False)')
     parser.add_argument('--version', action='version',
                         version='%(prog)s {}'.format(__version__))
     args = parser.parse_args()
+
+    if args.after and args.after >= args.before:
+        sys.stderr.write('The --after value must be older than the --before '
+                         'value\n')
+        return 1
 
     token = args.token or os.getenv('SLACK_TOKEN')
     if not token:
@@ -102,7 +110,8 @@ def run(slack, args):
     not_found = 0
 
     try:
-        for message in search_messages(slack, args.user, before=args.before):
+        for message in search_messages(slack, args.user, after=args.after,
+                                       before=args.before):
             try:
                 delete_message(slack, message, args.update)
             except slacker.Error as exception:
@@ -121,8 +130,10 @@ def run(slack, args):
     return 0
 
 
-def search_messages(slack, user, before=None):
+def search_messages(slack, user, after, before):
     query = 'from:{}'.format(user)
+    if after:
+        query += ' after:{}'.format(after)
     if before:
         query += ' before:{}'.format(before)
 

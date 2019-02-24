@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- `--after` parameter to help narrow down search results.
+
 ## [0.2.0] - 2019/02/23
 
 ### Changed
