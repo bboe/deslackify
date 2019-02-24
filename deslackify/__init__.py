@@ -9,7 +9,7 @@ import slacker
 from requests import HTTPError, ReadTimeout, Session
 
 
-__version__ = '0.3.0'
+__version__ = '0.4.0'
 
 
 logging.basicConfig(
@@ -117,7 +117,7 @@ def run(slack, args):
                                         handle_encoding(message['text'])))
             try:
                 if not args.dry_run:
-                    delete_message(slack, message, update=args.update)
+                    delete_message(slack, message, args.update)
             except slacker.Error as exception:
                 if exception.args[0] == 'message_not_found':
                     print('---not found')
