@@ -9,7 +9,7 @@ import slacker
 from requests import HTTPError, ReadTimeout, Session
 
 
-__version__ = '0.1.2'
+__version__ = '0.2.0'
 
 
 logging.basicConfig(
@@ -17,10 +17,16 @@ logging.basicConfig(
     level=logging.INFO)
 
 
+def handle_encoding(message):
+    if sys.version_info > (3, 0):
+        return message
+    return message.encode('utf-8')
+
+
 def delete_message(slack, message, update_first=False):
     date_string = datetime.utcfromtimestamp(
         int(message['ts'].split('.', 1)[0])).strftime('%Y-%m-%d %H:%M:%S')
-    logging.info('{} {}'.format(date_string, message['text']))
+    logging.info('{} {}'.format(date_string, handle_encoding(message['text'])))
 
     if update_first:
         handle_rate_limit(
@@ -77,7 +83,7 @@ def main():
         '--update', action='store_true',
         help='Update message to `-` prior to deleting (default: False)')
     parser.add_argument('--version', action='version',
-                        version=f'%(prog)s {__version__}')
+                        version='%(prog)s {}'.format(__version__))
     args = parser.parse_args()
 
     token = args.token or os.getenv('SLACK_TOKEN')
