@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.3.0] - 2019/02/23
 
 ### Added
 
@@ -9,7 +9,7 @@
 
 ## [0.2.0] - 2019/02/23
 
-### Changed
+### Added
 
 - Support python 2.7.
 
