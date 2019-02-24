@@ -17,12 +17,6 @@ logging.basicConfig(
     level=logging.INFO)
 
 
-def handle_encoding(message):
-    if sys.version_info > (3, 0):
-        return message
-    return message.encode('utf-8')
-
-
 def delete_message(slack, message, update_first=False):
     if update_first:
         handle_rate_limit(
@@ -30,6 +24,12 @@ def delete_message(slack, message, update_first=False):
             text='-', ts=message['ts'])
     handle_rate_limit(slack.chat.delete, as_user=True,
                       channel=message['channel']['id'], ts=message['ts'])
+
+
+def handle_encoding(message):
+    if sys.version_info > (3, 0):
+        return message
+    return message.encode('utf-8')
 
 
 def handle_rate_limit(method, *args, **kwargs):
@@ -128,8 +128,8 @@ def run(slack, args):
     except KeyboardInterrupt:
         pass
 
-    delete_message = 'to delete' if args.dry_run else 'deleted'
-    logging.info('Messages {}: {}'.format(delete_message, deleted))
+    phrase = 'to delete' if args.dry_run else 'deleted'
+    logging.info('Messages {}: {}'.format(phrase, deleted))
     if not_found:
         logging.info('Messages not found: {}'.format(not_found))
     return 0
