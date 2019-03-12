@@ -104,7 +104,7 @@ def main():
     parser.add_argument(
         "--token",
         help=(
-            "The token used to connect to slack. This value can also be passed via"
+            "The token used to connect to slack. This value can also be passed via"  # noqa: E501
             "the SLACK_TOKEN environment variable."
         ),
     )
@@ -122,7 +122,7 @@ def main():
 
     if args.after and args.after >= args.before:
         sys.stderr.write(
-            "The --after value must be older than the --before " "value\n"
+            "The --after value must be older than the --before value\n"
         )
         return 1
 
