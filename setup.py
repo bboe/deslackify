@@ -14,6 +14,14 @@ with open(path.join(HERE, PACKAGE_NAME, '__init__.py'),
     VERSION = re.search("__version__ = '([^']+)'", fp.read()).group(1)
 
 
+extras_require = {
+    "dev": ["pre-commit"],
+    "lint": ["black", "flake8"],
+    "test": ["pytest"],
+}
+extras_require["dev"] = sorted(set(sum(extras_require.values(), [])))
+
+
 setup(name=PACKAGE_NAME,
       author='Bryce Boe',
       author_email='bbzbryce@gmail.com',
@@ -24,6 +32,7 @@ setup(name=PACKAGE_NAME,
           'Programming Language :: Python :: 3'],
       description='A program to delete old slack messages.',
       entry_points={'console_scripts': ['deslackify = deslackify:main']},
+      extras_require=extras_require,
       install_requires=['slacker >=0.12, <0.13'],
       keywords='slack',
       license='Simplified BSD License',
