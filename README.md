@@ -2,15 +2,28 @@
 
 A tool to remove your own slack messages.
 
+`deslackify` can only delete messages that *you* sent. The token you provide
+authenticates as your own account, so it cannot remove messages authored by
+other users.
+
 ## Installation
 
 ```sh
 pip install deslackify
 ```
 
-## Obtaining Slack Legacy Token
+## Obtaining a Slack Token
 
-Generate a token via: https://api.slack.com/custom-integrations/legacy-tokens
+__Note__: Slack [discontinued legacy
+tokens](https://api.slack.com/legacy/custom-integrations/legacy-tokens) in 2020,
+so they can no longer be generated. Use a Slack app user token instead:
+
+1. Create a new app at https://api.slack.com/apps ("From scratch").
+2. Under __OAuth & Permissions__, add the following __User Token Scopes__:
+   `search:read` and `chat:write`.
+3. Click __Install to Workspace__ and authorize the app.
+4. Copy the __User OAuth Token__ (it begins with `xoxp-`); use it as `TOKEN`
+   below.
 
 ## Running
 
