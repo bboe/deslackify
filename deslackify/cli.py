@@ -6,11 +6,12 @@ import argparse
 import logging
 import operator
 import os
+import re
 import sys
 import time
 import urllib.parse
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING, Any
 
@@ -96,6 +97,16 @@ def _handle_message(
         logger.warning("%s", exception)
         return 0
     return 1
+
+
+def _is_valid_date(value: str) -> bool:
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value) is None:
+        return False
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
 
 
 def _normalize_d_cookie(cookie: str) -> str:
@@ -186,7 +197,7 @@ def main() -> int:
     parser.add_argument(
         "--before",
         default=default_before.strftime("%Y-%m-%d"),
-        help="Date to delete messages prior to (default: %(default)s)",
+        help="Date (YYYY-MM-DD) to delete messages prior to (default: %(default)s)",
     )
     parser.add_argument(
         "--cookie",
@@ -215,6 +226,11 @@ def main() -> int:
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = parser.parse_args()
+
+    for flag, value in (("--after", args.after), ("--before", args.before)):
+        if value is not None and not _is_valid_date(value):
+            sys.stderr.write(f"The {flag} value must be a date in YYYY-MM-DD format\n")
+            return 1
 
     if args.after and args.after >= args.before:
         sys.stderr.write("The --after value must be older than the --before value\n")

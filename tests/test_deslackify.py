@@ -125,6 +125,29 @@ def test_handle_rate_limit_success():
     assert cli.handle_rate_limit(lambda: body) is body
 
 
+@pytest.mark.parametrize("value", ["2026-06-15", "2020-01-01", "1999-12-31"])
+def test_is_valid_date_accepts_iso_dates(value):
+    assert cli._is_valid_date(value) is True
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "2026-6-15",  # not zero-padded
+        "06/14/2026",  # slash format
+        "20260615",  # no separators
+        "2026-06-15T00:00:00",  # includes a time
+        "yesterday",  # relative word
+        "1 hour ago",  # relative phrase
+        "2026-13-01",  # invalid month
+        "2026-06-32",  # invalid day
+        "",  # empty
+    ],
+)
+def test_is_valid_date_rejects_non_iso_values(value):
+    assert cli._is_valid_date(value) is False
+
+
 def test_normalize_d_cookie_encodes_decoded_value():
     assert cli._normalize_d_cookie("xoxd-a/b+c") == "xoxd-a%2Fb%2Bc"
 
