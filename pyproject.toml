@@ -1,2 +1,82 @@
-[tool.black]
-line-length = 79
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatch-vcs", "hatchling"]
+
+[dependency-groups]
+dev = ["pyright"]
+test = ["pytest"]
+
+[project]
+authors = [{name = "Bryce Boe", email = "bbzbryce@gmail.com"}]
+classifiers = [
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: BSD License",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14"
+]
+dependencies = [
+  "requests >=2.20",
+  "slacker >=0.12, <0.13"
+]
+description = "A program to delete old slack messages."
+dynamic = ["version"]
+keywords = ["slack"]
+license = "BSD-2-Clause"
+name = "deslackify"
+readme = "README.md"
+requires-python = ">=3.10"
+
+[project.scripts]
+deslackify = "deslackify:main"
+
+[project.urls]
+Source = "https://github.com/bboe/deslackify"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.pyright]
+include = ["deslackify"]
+pythonVersion = "3.10"
+typeCheckingMode = "strict"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+preview = true
+target-version = "py310"
+
+[tool.ruff.lint]
+ignore = [
+  "ANN401", # the Slack client surface is dynamic and typed as Any
+  "COM812", # conflicts with the formatter
+  "CPY001", # we do not require a copyright notice at the top of every file
+  "D203", # incompatible with D211
+  "D213", # incompatible with D212
+  "D417", # docstrfmt reflows multi-arg sections, breaking argument matching
+  "DOC501", # docstrfmt reflows multi-exception Raises sections
+  "PERF203", # retrying inside a loop legitimately uses try/except
+  "PLR6301" # Protocol methods require an instance signature
+]
+select = ["ALL"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+  "ANN", # tests do not require type annotations
+  "ARG", # test doubles accept unused arguments
+  "D", # tests do not require docstrings
+  "EM", # tests may raise exceptions with string literals
+  "INP001", # tests are not part of a package
+  "PLR2004", # tests may compare against magic values
+  "RUF076", # autouse fixtures are intentional in tests
+  "S101", # tests use assert
+  "SLF001" # tests may access private members
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
