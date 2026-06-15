@@ -6,10 +6,14 @@ A tool to remove your own slack messages.
 authenticates as your own account, so it cannot remove messages authored by
 other users.
 
+`deslackify` supports Python 3.10 through 3.14.
+
 ## Installation
 
+Install the `deslackify` command with [uv](https://docs.astral.sh/uv/):
+
 ```sh
-pip install deslackify
+uv tool install deslackify
 ```
 
 ## Obtaining a Slack Token
@@ -29,6 +33,12 @@ so they can no longer be generated. Use a Slack app user token instead:
 
 ```sh
 deslackify --token TOKEN USERNAME
+```
+
+Or run it once without installing:
+
+```sh
+uvx deslackify --token TOKEN USERNAME
 ```
 
 By default `deslackify` will remove USERNAME's messages that are more than a

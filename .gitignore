@@ -1,10 +1,12 @@
-*.egg
 *.egg-info/
-*.eggs/
 *.pyc
 *~
 .coverage
+.pytest_cache/
+.ruff_cache/
+.venv/
+__pycache__/
 _build/
 build/
 dist/
-pip-wheel-metadata/
+htmlcov/
