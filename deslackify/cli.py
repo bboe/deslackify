@@ -8,6 +8,7 @@ import operator
 import os
 import sys
 import time
+import urllib.parse
 from collections import Counter
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
@@ -100,6 +101,34 @@ def _handle_message(
     return 1
 
 
+def _normalize_d_cookie(cookie: str) -> str:
+    """Return the Slack ``d`` cookie value URL-encoded, as the API requires.
+
+    ``cookie`` may be a bare ``d`` value or a full ``Cookie:`` header copied from a
+    browser request, in either the encoded (network request) or decoded (cookie
+    inspector) form. Slack only authenticates when ``d`` is URL-encoded, so the value is
+    re-encoded idempotently.
+
+    Returns:
+        The ``d`` cookie value, URL-encoded.
+
+    """
+    value = cookie
+    for part in cookie.split(";"):
+        name, separator, candidate = part.strip().partition("=")
+        if separator and name == "d":
+            value = candidate
+            break
+    return urllib.parse.quote(urllib.parse.unquote(value), safe="")
+
+
+def _session(cookie: str | None) -> Session:
+    session = Session()
+    if cookie:
+        session.cookies.set("d", _normalize_d_cookie(cookie), domain=".slack.com")
+    return session
+
+
 def delete_message(slack: Slack, message: Mapping[str, Any], *, update_first: bool = False) -> None:
     """Delete ``message``, optionally overwriting its text with ``-`` beforehand."""
     channel = message["channel"]["id"]
@@ -163,6 +192,14 @@ def main() -> int:
         help="Date to delete messages prior to (default: %(default)s)",
     )
     parser.add_argument(
+        "--cookie",
+        help=(
+            "The Slack `d` session cookie (xoxd-...) that pairs with an xoxc- browser"
+            " token. This value can also be passed via the SLACK_COOKIE environment"
+            " variable."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Do not actually delete nor update (default: False)",
@@ -193,7 +230,7 @@ def main() -> int:
         )
         return 1
 
-    with Session() as session:
+    with _session(args.cookie or os.getenv("SLACK_COOKIE")) as session:
         slack = cast("Slack", slacker.Slacker(token, session=session))
         return run(slack, args)
 

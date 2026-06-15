@@ -104,6 +104,19 @@ def test_handle_rate_limit_unsuccessful_raises():
         cli.handle_rate_limit(lambda: FakeResponse(successful=False))
 
 
+def test_normalize_d_cookie_encodes_decoded_value():
+    assert cli._normalize_d_cookie("xoxd-a/b+c") == "xoxd-a%2Fb%2Bc"
+
+
+def test_normalize_d_cookie_extracts_d_from_full_header():
+    header = "b=hex; d=xoxd-a/b+c; d-s=123"
+    assert cli._normalize_d_cookie(header) == "xoxd-a%2Fb%2Bc"
+
+
+def test_normalize_d_cookie_is_idempotent_on_encoded_value():
+    assert cli._normalize_d_cookie("xoxd-a%2Fb%2Bc") == "xoxd-a%2Fb%2Bc"
+
+
 def test_run_counts_slacker_errors(monkeypatch):
     message = {"channel": {"id": "C1"}, "text": "hello", "ts": "1609459200.000"}
     monkeypatch.setattr(cli, "search_messages", lambda *_a, **_k: iter([message]))
@@ -181,6 +194,15 @@ def test_search_messages_without_after():
     slack.search = search
     assert list(cli.search_messages(slack, "bob", after=None, before="x")) == []
     assert search.query == "from:bob before:x"
+
+
+def test_session_sets_encoded_d_cookie():
+    session = cli._session("xoxd-a/b+c")
+    assert session.cookies.get("d") == "xoxd-a%2Fb%2Bc"
+
+
+def test_session_without_cookie_sets_nothing():
+    assert cli._session(None).cookies.get("d") is None
 
 
 def test_version():
