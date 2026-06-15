@@ -130,7 +130,6 @@ name = "deslackify"
 source = { editable = "." }
 dependencies = [
     { name = "requests" },
-    { name = "slacker" },
 ]
 
 [package.dev-dependencies]
@@ -142,10 +141,7 @@ test = [
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "requests", specifier = ">=2.20" },
-    { name = "slacker", specifier = ">=0.12,<0.13" },
-]
+requires-dist = [{ name = "requests", specifier = ">=2.20" }]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pyright" }]
@@ -261,18 +257,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ac/c3/e2a2b89f2d3e2179abd6d00ebd70bff6273f37fb3e0cc209f48b39d00cbf/requests-2.34.2.tar.gz", hash = "sha256:f288924cae4e29463698d6d60bc6a4da69c89185ad1e0bcc4104f584e960b9ed", size = 142856, upload-time = "2026-05-14T19:25:27.735Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a0/f4/c67b0b3f1b9245e8d266f0f112c500d50e5b4e83cb6f3b71b6528104182a/requests-2.34.2-py3-none-any.whl", hash = "sha256:2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0", size = 73075, upload-time = "2026-05-14T19:25:26.443Z" },
-]
-
-[[package]]
-name = "slacker"
-version = "0.12.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "requests" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/a9/7a/ad13ee89fe30ac69461ee7a3dee0882b493c8ce59b68a489948b50ac0403/slacker-0.12.0.tar.gz", hash = "sha256:7771d4edd2bf651f849b9ca84e54a9d343de4fd7a87fa8d31b872407441a4812", size = 9471, upload-time = "2018-12-08T11:23:27.692Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/41/c5/006794554034d01c7821171a5f2fe3b233f3261d7af76abbfdb0d69f1ce8/slacker-0.12.0-py3-none-any.whl", hash = "sha256:41ee24d0f28612542f9239b08d9936d0dee661d2a14e83d741037cb15fdf4ff4", size = 8726, upload-time = "2018-12-08T11:23:25.542Z" },
 ]
 
 [[package]]
