@@ -1,11 +1,23 @@
 import argparse
 
 import pytest
-import slacker
 from requests import HTTPError
 
 import deslackify
 from deslackify import cli
+
+
+class FakeClient:
+    def __init__(self, responses=None):
+        self.calls = []
+        self._responses = responses or {}
+
+    def call(self, method, **params):
+        self.calls.append((method, params))
+        result = self._responses.get(method)
+        if isinstance(result, Exception):
+            raise result
+        return result if result is not None else {"ok": True}
 
 
 class FakeHTTPResponse:
@@ -14,10 +26,25 @@ class FakeHTTPResponse:
         self.headers = headers or {}
 
 
-class FakeResponse:
-    def __init__(self, body=None, *, successful=True):
-        self.body = {"ok": True} if body is None else body
-        self.successful = successful
+class FakePostResponse:
+    def __init__(self, body):
+        self._body = body
+
+    def json(self):
+        return self._body
+
+    def raise_for_status(self):
+        pass
+
+
+class FakeSession:
+    def __init__(self, body):
+        self._body = body
+        self.posted = []
+
+    def post(self, url, **kwargs):
+        self.posted.append((url, kwargs))
+        return FakePostResponse(self._body)
 
 
 @pytest.fixture(autouse=True)
@@ -29,79 +56,73 @@ def http_error(status_code, *, retry_after="0"):
     return HTTPError(response=FakeHTTPResponse(status_code, {"retry-after": retry_after}))
 
 
+def test_client_call_posts_bearer_token_and_returns_body():
+    client = cli.SlackClient("xoxc-tok", None)
+    client._session = FakeSession({"ok": True, "value": 1})
+    assert client.call("search.messages", query="q") == {"ok": True, "value": 1}
+    url, kwargs = client._session.posted[0]
+    assert url == "https://slack.com/api/search.messages"
+    assert kwargs["headers"]["Authorization"] == "Bearer xoxc-tok"
+    assert kwargs["data"] == {"query": "q"}
+
+
+def test_client_call_raises_slack_error_when_not_ok():
+    client = cli.SlackClient("tok", None)
+    client._session = FakeSession({"error": "cant_delete_message", "ok": False})
+    with pytest.raises(cli.SlackError, match="cant_delete_message"):
+        client.call("chat.delete", ts="1")
+
+
 def test_delete_message_delete_only():
-    calls = []
-
-    class FakeChat:
-        def delete(self, **kwargs):
-            calls.append("delete")
-            return FakeResponse()
-
-    class FakeSlack:
-        chat = FakeChat()
-
-    cli.delete_message(FakeSlack(), {"channel": {"id": "C1"}, "ts": "1"})
-    assert calls == ["delete"]
+    client = FakeClient()
+    cli.delete_message(client, {"channel": {"id": "C1"}, "ts": "1"})
+    assert [method for method, _ in client.calls] == ["chat.delete"]
 
 
 def test_delete_message_updates_then_deletes():
-    calls = []
-
-    class FakeChat:
-        def update(self, **kwargs):
-            calls.append(("update", kwargs))
-            return FakeResponse()
-
-        def delete(self, **kwargs):
-            calls.append(("delete", kwargs))
-            return FakeResponse()
-
-    class FakeSlack:
-        chat = FakeChat()
-
-    message = {"channel": {"id": "C1"}, "ts": "123"}
-    cli.delete_message(FakeSlack(), message, update_first=True)
-    assert [name for name, _ in calls] == ["update", "delete"]
-    assert calls[0][1] == {"as_user": True, "channel": "C1", "text": "-", "ts": "123"}
+    client = FakeClient()
+    cli.delete_message(client, {"channel": {"id": "C1"}, "ts": "123"}, update_first=True)
+    assert [method for method, _ in client.calls] == ["chat.update", "chat.delete"]
+    assert client.calls[0][1] == {
+        "as_user": "true",
+        "channel": "C1",
+        "text": "-",
+        "ts": "123",
+    }
 
 
 def test_handle_rate_limit_gives_up():
-    def method():
+    def call():
         raise http_error(429)
 
     with pytest.raises(cli.RetryError):
-        cli.handle_rate_limit(method)
+        cli.handle_rate_limit(call)
 
 
 def test_handle_rate_limit_reraises_other_http_errors():
-    def method():
+    def call():
         raise http_error(500)
 
     with pytest.raises(HTTPError):
-        cli.handle_rate_limit(method)
+        cli.handle_rate_limit(call)
 
 
 def test_handle_rate_limit_retries_then_succeeds():
-    outcomes = [http_error(429), FakeResponse()]
+    outcomes = [http_error(429), {"ok": True}]
 
-    def method():
+    def call():
         outcome = outcomes.pop(0)
         if isinstance(outcome, Exception):
             raise outcome
         return outcome
 
-    assert cli.handle_rate_limit(method).body["ok"] is True
+    assert cli.handle_rate_limit(call) == {"ok": True}
     assert outcomes == []
 
 
 def test_handle_rate_limit_success():
-    response = FakeResponse()
-    assert cli.handle_rate_limit(lambda: response) is response
-
-
-def test_handle_rate_limit_unsuccessful_raises():
-    with pytest.raises(RuntimeError):
-        cli.handle_rate_limit(lambda: FakeResponse(successful=False))
+    body = {"ok": True}
+    assert cli.handle_rate_limit(lambda: body) is body
 
 
 def test_normalize_d_cookie_encodes_decoded_value():
@@ -117,20 +138,16 @@ def test_normalize_d_cookie_is_idempotent_on_encoded_value():
     assert cli._normalize_d_cookie("xoxd-a%2Fb%2Bc") == "xoxd-a%2Fb%2Bc"
 
 
-def test_run_counts_slacker_errors(monkeypatch):
+def test_run_counts_slack_errors(monkeypatch):
     message = {"channel": {"id": "C1"}, "text": "hello", "ts": "1609459200.000"}
     monkeypatch.setattr(cli, "search_messages", lambda *_a, **_k: iter([message]))
 
     def raise_error(*_args, **_kwargs):
-        raise slacker.Error("cant_delete_message")
+        raise cli.SlackError("cant_delete_message")
 
     monkeypatch.setattr(cli, "delete_message", raise_error)
     args = argparse.Namespace(
-        after=None,
-        before="2021-01-01",
-        dry_run=False,
-        update=False,
-        user="alice",
+        after=None, before="2021-01-01", dry_run=False, update=False, user="alice"
     )
     assert cli.run(object(), args) == 0
 
@@ -141,59 +158,32 @@ def test_run_dry_run_does_not_delete(monkeypatch):
     deleted = []
     monkeypatch.setattr(cli, "delete_message", lambda *a, **k: deleted.append(True))
     args = argparse.Namespace(
-        after=None,
-        before="2021-01-01",
-        dry_run=True,
-        update=False,
-        user="alice",
+        after=None, before="2021-01-01", dry_run=True, update=False, user="alice"
     )
     assert cli.run(object(), args) == 0
     assert deleted == []
 
 
 def test_search_messages_builds_query_and_paginates():
-    captured = []
-
-    class FakeSearch:
-        def messages(self, **kwargs):
-            captured.append(kwargs)
-            return FakeResponse({
-                "messages": {
-                    "matches": [{"ts": "2"}, {"ts": "1"}],
-                    "paging": {"pages": 2},
-                    "total": 3,
-                },
-                "ok": True,
-            })
-
-    class FakeSlack:
-        search = FakeSearch()
-
-    results = list(
-        cli.search_messages(FakeSlack(), "alice", after="2020-01-01", before="2021-01-01"),
-    )
-    assert captured[0]["query"] == "from:alice after:2020-01-01 before:2021-01-01"
+    body = {
+        "messages": {
+            "matches": [{"ts": "2"}, {"ts": "1"}],
+            "paging": {"pages": 2},
+            "total": 3,
+        },
+        "ok": True,
+    }
+    client = FakeClient({"search.messages": body})
+    results = list(cli.search_messages(client, "alice", after="2020-01-01", before="2021-01-01"))
+    assert client.calls[0][1]["query"] == "from:alice after:2020-01-01 before:2021-01-01"
     assert [match["ts"] for match in results] == ["1", "2", "1", "2"]
 
 
 def test_search_messages_without_after():
-    class FakeSearch:
-        def messages(self, **kwargs):
-            self.query = kwargs["query"]
-            return FakeResponse({
-                "messages": {"matches": [], "paging": {"pages": 0}, "total": 0},
-                "ok": True,
-            })
-
-    search = FakeSearch()
-
-    class FakeSlack:
-        pass
-
-    slack = FakeSlack()
-    slack.search = search
-    assert list(cli.search_messages(slack, "bob", after=None, before="x")) == []
-    assert search.query == "from:bob before:x"
+    body = {"messages": {"matches": [], "paging": {"pages": 0}, "total": 0}, "ok": True}
+    client = FakeClient({"search.messages": body})
+    assert list(cli.search_messages(client, "bob", after=None, before="x")) == []
+    assert client.calls[0][1]["query"] == "from:bob before:x"
 
 
 def test_session_sets_encoded_d_cookie():

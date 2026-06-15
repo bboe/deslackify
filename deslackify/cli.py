@@ -12,9 +12,8 @@ import urllib.parse
 from collections import Counter
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import TYPE_CHECKING, Any
 
-import slacker  # pyright: ignore[reportMissingTypeStubs]
 from requests import HTTPError, ReadTimeout, Session
 
 if TYPE_CHECKING:
@@ -25,62 +24,62 @@ try:
 except PackageNotFoundError:
     __version__ = "unknown"
 
+API_BASE_URL = "https://slack.com/api/"
 MAX_RETRIES = 5
 MAX_SLEEP_SECONDS = 3
 READ_TIMEOUT_SLEEP_SECONDS = 16
+REQUEST_TIMEOUT = 30
 TOO_MANY_REQUESTS = 429
 
 logger = logging.getLogger(__name__)
-
-
-class Chat(Protocol):
-    """The ``chat`` methods of :class:`slacker.Slacker` used here."""
-
-    def delete(self, *, as_user: bool, channel: str, ts: str) -> Response:
-        """Delete the message identified by ``ts`` in ``channel``."""
-        ...
-
-    def update(self, *, as_user: bool, channel: str, text: str, ts: str) -> Response:
-        """Replace the text of the message identified by ``ts`` in ``channel``."""
-        ...
-
-
-class Response(Protocol):
-    """The subset of a :class:`slacker.Response` that this program relies on."""
-
-    body: Mapping[str, Any]
-    successful: bool
 
 
 class RetryError(Exception):
     """Raised when a request does not succeed within ``MAX_RETRIES`` attempts."""
 
 
-class Search(Protocol):
-    """The ``search`` methods of :class:`slacker.Slacker` used here."""
+class SlackClient:
+    """A minimal Slack Web API client backed by a :class:`requests.Session`.
 
-    def messages(self, *, count: int, page: int, query: str, sort: str, sort_dir: str) -> Response:
-        """Return a page of messages matching ``query``."""
-        ...
+    The token is sent as a bearer header, which authenticates both ``xoxp-`` app tokens
+    and ``xoxc-`` browser tokens (the latter paired with a ``d`` cookie).
+
+    """
+
+    def __init__(self, token: str, cookie: str | None) -> None:
+        """Build a client authenticating with ``token`` and an optional ``cookie``."""
+        self._token = token
+        self._session = _session(cookie)
+
+    def _request(self, method: str, params: Mapping[str, Any]) -> Mapping[str, Any]:
+        response = self._session.post(
+            f"{API_BASE_URL}{method}",
+            data=dict(params),
+            headers={"Authorization": f"Bearer {self._token}"},
+            timeout=REQUEST_TIMEOUT,
+        )
+        response.raise_for_status()
+        body: dict[str, Any] = response.json()
+        if not body["ok"]:
+            raise SlackError(body["error"])
+        return body
+
+    def call(self, method: str, **params: Any) -> Mapping[str, Any]:
+        """Call Slack Web API ``method``, retrying on rate limits and timeouts.
+
+        Returns:
+            The decoded ``ok: true`` response body.
+
+        """
+        return handle_rate_limit(lambda: self._request(method, params))
 
 
-class Slack(Protocol):
-    """The subset of :class:`slacker.Slacker` that this program relies on."""
-
-    chat: Chat
-    search: Search
-
-
-def _attempt(method: Callable[..., Response], kwargs: Mapping[str, Any]) -> Response:
-    response = method(**kwargs)
-    if not response.successful or not response.body["ok"]:
-        message = "Slack reported an unsuccessful response"
-        raise RuntimeError(message)
-    return response
+class SlackError(Exception):
+    """Raised when the Slack API returns an unsuccessful (``ok: false``) response."""
 
 
 def _handle_message(
-    slack: Slack, message: Mapping[str, Any], args: argparse.Namespace, errors: Counter[str]
+    client: SlackClient, message: Mapping[str, Any], args: argparse.Namespace, errors: Counter[str]
 ) -> int:
     when = datetime.fromtimestamp(int(message["ts"].split(".", 1)[0]), tz=timezone.utc).strftime(
         "%Y-%m-%d %H:%M:%S"
@@ -88,15 +87,13 @@ def _handle_message(
     logger.info("%s %s", when, message["text"])
     try:
         if not args.dry_run:
-            delete_message(slack, message, update_first=args.update)
+            delete_message(client, message, update_first=args.update)
     except RetryError:
         errors["max retries exceeded"] += 1
         logger.warning("RetryError")
-    except slacker.Error as exception:
-        if len(exception.args) != 1:
-            raise
-        errors[exception.args[0]] += 1
-        logger.warning(exception.args[0])
+    except SlackError as exception:
+        errors[str(exception)] += 1
+        logger.warning("%s", exception)
         return 0
     return 1
 
@@ -129,26 +126,26 @@ def _session(cookie: str | None) -> Session:
     return session
 
 
-def delete_message(slack: Slack, message: Mapping[str, Any], *, update_first: bool = False) -> None:
+def delete_message(
+    client: SlackClient, message: Mapping[str, Any], *, update_first: bool = False
+) -> None:
     """Delete ``message``, optionally overwriting its text with ``-`` beforehand."""
     channel = message["channel"]["id"]
     if update_first:
-        handle_rate_limit(
-            slack.chat.update, as_user=True, channel=channel, text="-", ts=message["ts"]
-        )
-    handle_rate_limit(slack.chat.delete, as_user=True, channel=channel, ts=message["ts"])
+        client.call("chat.update", as_user="true", channel=channel, text="-", ts=message["ts"])
+    client.call("chat.delete", as_user="true", channel=channel, ts=message["ts"])
 
 
-def handle_rate_limit(method: Callable[..., Response], **kwargs: Any) -> Response:
-    """Call ``method``, retrying when Slack rate-limits or times out.
+def handle_rate_limit(call: Callable[[], Mapping[str, Any]]) -> Mapping[str, Any]:
+    """Invoke ``call``, retrying when Slack rate-limits or times out.
 
     Returns:
-        The successful :class:`Response`.
+        The result of ``call``.
 
     """
     for _ in range(MAX_RETRIES):
         try:
-            return _attempt(method, kwargs)
+            return call()
         except HTTPError as exception:
             response = exception.response
             if response is None or response.status_code != TOO_MANY_REQUESTS:
@@ -230,12 +227,11 @@ def main() -> int:
         )
         return 1
 
-    with _session(args.cookie or os.getenv("SLACK_COOKIE")) as session:
-        slack = cast("Slack", slacker.Slacker(token, session=session))
-        return run(slack, args)
+    client = SlackClient(token, args.cookie or os.getenv("SLACK_COOKIE"))
+    return run(client, args)
 
 
-def run(slack: Slack, args: argparse.Namespace) -> int:
+def run(client: SlackClient, args: argparse.Namespace) -> int:
     """Search for and delete the messages described by ``args``.
 
     Returns:
@@ -246,8 +242,8 @@ def run(slack: Slack, args: argparse.Namespace) -> int:
     errors: Counter[str] = Counter()
 
     try:
-        for message in search_messages(slack, args.user, after=args.after, before=args.before):
-            deleted += _handle_message(slack, message, args, errors)
+        for message in search_messages(client, args.user, after=args.after, before=args.before):
+            deleted += _handle_message(client, message, args, errors)
     except KeyboardInterrupt:
         pass
 
@@ -259,7 +255,7 @@ def run(slack: Slack, args: argparse.Namespace) -> int:
 
 
 def search_messages(
-    slack: Slack, user: str, *, after: str | None, before: str
+    client: SlackClient, user: str, *, after: str | None, before: str
 ) -> Iterator[Mapping[str, Any]]:
     """Yield messages sent by ``user`` within the requested date range.
 
@@ -279,13 +275,11 @@ def search_messages(
         "sort": "timestamp",
         "sort_dir": "desc",
     }
-    response = handle_rate_limit(slack.search.messages, page=1, **search_params)
-    result = response.body["messages"]
+    result = client.call("search.messages", page=1, **search_params)["messages"]
     page = result["paging"]["pages"]
     logger.info("Found %d items", result["total"])
 
     while page > 0:
-        response = handle_rate_limit(slack.search.messages, page=page, **search_params)
-        result = response.body["messages"]
+        result = client.call("search.messages", page=page, **search_params)["messages"]
         yield from sorted(result["matches"], key=operator.itemgetter("ts"))
         page -= 1
